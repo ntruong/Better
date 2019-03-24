@@ -1,0 +1,86 @@
+#!/bin/bash
+
+if [[ $# -ne 3 ]]; then
+  printf "usage: better [src] [dst] [enc]\n"
+  exit 1
+fi
+
+src=$1
+dst=$2
+enc=$3
+
+# Make the output directory if it doesn't exist.'
+mkdir -p "$dst"
+
+# Get a tag out of a .flac file.
+# @param  $1  name of the tag
+# @param  $2  file to extract tag from
+function tag () {
+  local ftag="$1"
+  local file="$2"
+  local out=$(metaflac --show-tag="$ftag" "$file" | sed "s/^[^=]*=//")
+  printf "%s" "$out"
+}
+
+# FLAC encoding flags.
+flac_flags=(
+  --totally-silent
+  --decode
+  --stdout
+  )
+
+# Lame encoding flags.
+lame_flags=(
+  --add-id3v2
+  --id3v2-only
+  --pad-id3v2
+  --ignore-tag-errors
+  --silent
+  )
+
+case "$enc" in
+  cbr)
+    lame_flags+=( --cbr -b 320 )
+    ;;
+  v0)
+    lame_flags+=( -V0 --preset insane )
+    ;;
+esac
+
+function transcode () {
+  for f in `find "$src" -name "*.flac"`; do
+    # Get file metadata
+    artist=$(tag ARTIST "$f")
+    album=$(tag ALBUM "$f")
+    track=$(tag TRACKNUMBER "$f")
+    title=$(tag TITLE "$f")
+    year=$(tag ORIGINALYEAR "$f")
+    genre=$(tag GENRE "$f")
+    [[ -z "$year" ]] && year=$(tag DATE "$f")
+
+    # Get album art
+    # TODO(ntruong): there's GOTTA be a better way to do this
+    local dir=$(echo "$f" | sed "s/\/[^/]*$//")
+    [[ -e "$dir/folder.gif" ]] && art="$dir/folder.gif"
+    [[ -e "$dir/folder.jpg" ]] && art="$dir/folder.jpg"
+    [[ -e "$dir/folder.png" ]] && art="$dir/folder.png"
+    [[ -e "$dir/cover.gif" ]] && art="$dir/cover.gif"
+    [[ -e "$dir/cover.jpg" ]] && art="$dir/cover.jpg"
+    [[ -e "$dir/cover.png" ]] && art="$dir/cover.png"
+
+    # Convert the file
+    local dir="$dst/$artist/$album ($year) [$enc]"
+    mkdir -p "$dir"
+    local dest=$(echo ${f##*/} | sed "s/flac$/mp3/")
+    echo " [~] converting $album - $title"
+    flac "${flac_flags[@]}" "$f" | lame ${lame_flags[@]} \
+      --ta "$artist" --tl "$album" \
+      --tn "$track"  --tt "$title" \
+      --ty "$year"   --tg "${genre:-12}" \
+      --ti "$art" \
+      - "$dir/$dest" &> /dev/null
+  done
+}
+
+IFS=$'\n'
+transcode
