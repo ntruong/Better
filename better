@@ -1,26 +1,10 @@
 #!/bin/bash
 
-if [[ $# -ne 3 ]]; then
-  printf "usage: better [src] [dst] [enc]\n"
-  exit 1
-fi
-
-src=$1
-dst=$2
-enc=$3
-
-# Make the output directory if it doesn't exist.'
-mkdir -p "$dst"
-
-# Get a tag out of a .flac file.
-# @param  $1  name of the tag
-# @param  $2  file to extract tag from
-function tag () {
-  local ftag="$1"
-  local file="$2"
-  local out=$(metaflac --show-tag="$ftag" "$file" | sed "s/^[^=]*=//")
-  printf "%s" "$out"
-}
+# Global options (and their defaults). If the global is empty, it must be given
+# as an argument when the script is called.
+src=
+dst=""
+enc="v0"
 
 # FLAC encoding flags.
 flac_flags=(
@@ -38,15 +22,68 @@ lame_flags=(
   --silent
   )
 
-case "$enc" in
-  cbr)
-    lame_flags+=( --cbr -b 320 )
-    ;;
-  v0)
-    lame_flags+=( -V0 --preset insane )
-    ;;
-esac
+# Parse options.
+function opts() {
+  # Iterate over args until none remain
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help)
+        help
+        exit 0
+        ;;
+      -e|--encoding)
+        enc="$2"
+        shift
+        ;;
+      *)
+        if [[ -z "$src" ]]; then
+          src="$1"
+        elif [[ -z "$dst" ]]; then
+          dst="$1"
+        fi
+        ;;
+    esac
+    shift
+  done
 
+  # Load LAME flags from specified encoding
+  case "$enc" in
+    cbr)
+      lame_flags+=( --cbr -b 320 )
+      ;;
+    v0)
+      lame_flags+=( -V0 --preset insane )
+      ;;
+    *)
+      help && exit 1
+      ;;
+  esac
+}
+
+# Documentation.
+function help() {
+  printf "usage: better [options] <src> <dst>\n"
+  printf "\n"
+  printf "    -h, --help    display this help and exit\n"
+  printf "\n"
+  printf "    -e fmt\n"
+  printf "    --encoding fmt\n"
+  printf "        target encoding to transcode to, v0 by default\n"
+  printf "        fmt = cbr, v0\n"
+  printf "\n"
+}
+
+# Get a tag out of a .flac file.
+# @param  $1  name of the tag
+# @param  $2  file to extract tag from
+function tag () {
+  local ftag="$1"
+  local file="$2"
+  local out=$(metaflac --show-tag="$ftag" "$file")
+  printf "%s" "${out#*=}"
+}
+
+# Transcode from $src to $dst.
 function transcode () {
   for f in `find "$src" -name "*.flac"`; do
     # Get file metadata
@@ -82,5 +119,15 @@ function transcode () {
   done
 }
 
+function main() {
+  echo $src $dst
+  # Make the destination directory if it doesn't already exist
+  mkdir -p "$dst"
+  # Transcode the files
+  transcode
+}
+
 IFS=$'\n'
-transcode
+opts "$@"
+main
+exit 0
