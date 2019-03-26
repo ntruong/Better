@@ -3,8 +3,9 @@
 # Global options (and their defaults). If the global is empty, it must be given
 # as an argument when the script is called.
 src=
-dst=""
+dst=
 enc="v0"
+announce=
 
 # FLAC encoding flags.
 flac_flags=(
@@ -119,12 +120,24 @@ function transcode () {
   done
 }
 
+# Make torrent files using the given announce.
+function maketorrent () {
+  for artist in `cd "$dst" && ls -d */`; do
+    for album in `cd "$dst/$artist" && ls -d */`; do
+      local torrent="${artist%\/} - ${album%\/}.torrent"
+      mktorrent -p -a "$announce" -o "$dst/$torrent" "$dst/$artist$album"
+    done
+  done
+}
+
 function main() {
   echo $src $dst
   # Make the destination directory if it doesn't already exist
   mkdir -p "$dst"
   # Transcode the files
   transcode
+  # Make torrent file in the root of destination directory
+  maketorrent
 }
 
 IFS=$'\n'
