@@ -53,7 +53,7 @@ function opts() {
       lame_flags+=( --cbr -b 320 )
       ;;
     v0)
-      lame_flags+=( -V0 --preset insane )
+      lame_flags+=( -V0 )
       ;;
     *)
       help && exit 1
@@ -85,8 +85,9 @@ function tag () {
 }
 
 # Transcode from $src to $dst.
+# @param  $@  list of all files to transcode
 function transcode () {
-  for f in `find "$src" -name "*.flac"`; do
+  for f in "$@"; do
     # Get file metadata
     artist=$(tag ARTIST "$f")
     album=$(tag ALBUM "$f")
@@ -131,11 +132,12 @@ function maketorrent () {
 }
 
 function main() {
-  echo $src $dst
   # Make the destination directory if it doesn't already exist
   mkdir -p "$dst"
+  # Enumerate all files to examine.
+  files=( $(find "$src" -name "*.flac") )
   # Transcode the files
-  transcode
+  transcode "${files[@]}"
   # Make torrent file in the root of destination directory
   maketorrent
 }
