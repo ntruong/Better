@@ -89,12 +89,14 @@ function tag () {
 function transcode () {
   for f in "$@"; do
     # Get file metadata
+    albumartist=$(tag ALBUMARTIST "$f")
     artist=$(tag ARTIST "$f")
     album=$(tag ALBUM "$f")
     track=$(tag TRACKNUMBER "$f")
     title=$(tag TITLE "$f")
     year=$(tag ORIGINALYEAR "$f")
     genre=$(tag GENRE "$f")
+    [[ -z "$albumartist" ]] && albumartist="$artist"
     [[ -z "$year" ]] && year=$(tag DATE "$f")
 
     # Get album art
@@ -108,7 +110,7 @@ function transcode () {
     [[ -e "$dir/cover.png" ]] && art="$dir/cover.png"
 
     # Convert the file
-    local dir="$dst/$artist/$album ($year) [$enc]"
+    local dir="$dst/$albumartist/$album ($year) [$enc]"
     mkdir -p "$dir"
     local dest=$(echo ${f##*/} | sed "s/flac$/mp3/")
     echo " [~] converting $album - $title"
@@ -116,6 +118,7 @@ function transcode () {
       --ta "$artist" --tl "$album" \
       --tn "$track"  --tt "$title" \
       --ty "$year"   --tg "${genre:-12}" \
+      --tv "TPE2=$albumartist" \
       --ti "$art" \
       - "$dir/$dest" &> /dev/null
   done
