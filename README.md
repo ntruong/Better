@@ -5,3 +5,4 @@ Simple bash script to transcode FLAC files to MP3. Depends on
 * lame
 * metaflac
 * mktorrent
+* sox

@@ -6,6 +6,7 @@ src=
 dst=
 enc="v0"
 torrent=
+spectral=
 announce=
 
 # FLAC encoding flags.
@@ -40,6 +41,9 @@ function opts() {
       -t|--torrent)
         torrent=true
         ;;
+      -s|--spectral)
+        spectral=true
+        ;;
       *)
         if [[ -z "$src" ]]; then
           src="$1"
@@ -70,14 +74,16 @@ function help() {
   printf "\
 usage: better [options] <src> <dst>
 
-    -h, --help       display this help and exit
+    -h, --help        display this help and exit
 
     -e fmt
     --encoding fmt
         fmt = cbr, v0
         target encoding to transcode to, v0 by default
 
-    -t, --torrent    make .torrent files
+    -t, --torrent     make .torrent files
+
+    -s, --spectral    make spectrograms instead of converting
 
 "
 }
@@ -142,11 +148,25 @@ function maketorrent () {
   done
 }
 
+# Generate spectrograms.
+function spectrogram () {
+  for f in "$@"; do
+    track="${f%*.flac}"
+    track="${track##*/}"
+    sox "$f" -n spectrogram -t "$track" -o "$dst/$track.png"
+  done
+}
+
 function main() {
   # Make the destination directory if it doesn't already exist
   mkdir -p "$dst"
   # Enumerate all files to examine.
   files=( $(find "$src" -name "*.flac") )
+  # Check if we only want to generate spectrograms.
+  if [[ "$spectral" = true ]]; then
+    spectrogram "${files[@]}"
+    exit 0
+  fi
   # Transcode the files
   transcode "${files[@]}"
   # Make torrent file in the root of destination directory
