@@ -5,6 +5,7 @@
 src=
 dst=
 enc="v0"
+torrent=
 announce=
 
 # FLAC encoding flags.
@@ -36,6 +37,9 @@ function opts() {
         enc="$2"
         shift
         ;;
+      -t|--torrent)
+        torrent=true
+        ;;
       *)
         if [[ -z "$src" ]]; then
           src="$1"
@@ -63,15 +67,19 @@ function opts() {
 
 # Documentation.
 function help() {
-  printf "usage: better [options] <src> <dst>\n"
-  printf "\n"
-  printf "    -h, --help    display this help and exit\n"
-  printf "\n"
-  printf "    -e fmt\n"
-  printf "    --encoding fmt\n"
-  printf "        target encoding to transcode to, v0 by default\n"
-  printf "        fmt = cbr, v0\n"
-  printf "\n"
+  printf "\
+usage: better [options] <src> <dst>
+
+    -h, --help       display this help and exit
+
+    -e fmt
+    --encoding fmt
+        fmt = cbr, v0
+        target encoding to transcode to, v0 by default
+
+    -t, --torrent    make .torrent files
+
+"
 }
 
 # Get a tag out of a .flac file.
@@ -128,7 +136,7 @@ function transcode () {
 function maketorrent () {
   for artist in `cd "$dst" && ls -d */`; do
     for album in `cd "$dst/$artist" && ls -d */`; do
-      local torrent="${artist%\/} - ${album%\/}.torrent"
+      local torrent="${album%\/}.torrent"
       mktorrent -p -a "$announce" -o "$dst/$torrent" "$dst/$artist$album"
     done
   done
@@ -142,7 +150,7 @@ function main() {
   # Transcode the files
   transcode "${files[@]}"
   # Make torrent file in the root of destination directory
-  maketorrent
+  [[ "$torrent" = true ]] && maketorrent
 }
 
 IFS=$'\n'
