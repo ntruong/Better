@@ -26,7 +26,7 @@ lame_flags=(
   )
 
 # Parse options.
-function opts() {
+function opts () {
   # Iterate over args until none remain
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -70,7 +70,7 @@ function opts() {
 }
 
 # Documentation.
-function help() {
+function help () {
   printf "\
 usage: better [options] <src> <dst>
 
@@ -157,7 +157,7 @@ function spectrogram () {
   done
 }
 
-function main() {
+function main () {
   # Make the destination directory if it doesn't already exist
   mkdir -p "$dst"
   # Enumerate all files to examine.
