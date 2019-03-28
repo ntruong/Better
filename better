@@ -167,7 +167,7 @@ function transcode () {
 # Generate spectrograms.
 # @param  $1  directory with .flac files to spectralize
 function spectrogram () {
-  for file in $(find "$1" -name "*.flac"); do
+  for file in $(find "$1" -name "*.flac" -name "*.mp3"); do
     track=$(echo "$file" | sed "s/\.flac$//" | sed "s/.*\///")
     sox "$file" -n spectrogram -t "$track" -o "$dst/$track.png" &
   done
