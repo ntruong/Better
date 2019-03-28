@@ -2,11 +2,11 @@
 
 # Global options (and their defaults). If the global is empty, it must be given
 # as an argument when the script is called.
-src=
-dst=
+files=()
+dst="."
 enc="v0"
-torrent=
-spectral=
+spectral=false
+torrent=false
 announce=
 
 # FLAC encoding flags.
@@ -38,22 +38,28 @@ function opts () {
         enc="$2"
         shift
         ;;
-      -t|--torrent)
-        torrent=true
+      -o|--output)
+        dst="$2"
+        shift
         ;;
       -s|--spectral)
         spectral=true
         ;;
+      -t|--torrent)
+        torrent=true
+        ;;
       *)
-        if [[ -z "$src" ]]; then
-          src="$1"
-        elif [[ -z "$dst" ]]; then
-          dst="$1"
-        fi
+        files+=( "$1" )
         ;;
     esac
     shift
   done
+
+  # If no inputs were given, show help and exit
+  if [[ "${#files[@]}" -eq 0 ]]; then
+    help
+    exit 1
+  fi
 
   # Load LAME flags from specified encoding
   case "$enc" in
@@ -72,7 +78,7 @@ function opts () {
 # Documentation.
 function help () {
   printf "\
-usage: better [options] <src> <dst>
+usage: better [options] [file ...]
 
     -h, --help        display this help and exit
 
@@ -81,9 +87,11 @@ usage: better [options] <src> <dst>
         fmt = cbr, v0
         target encoding to transcode to, v0 by default
 
-    -t, --torrent     make .torrent files
+    -o, --output      output directory (defaults to current directory)
 
     -s, --spectral    make spectrograms instead of converting
+
+    -t, --torrent     make .torrent files
 
 "
 }
@@ -98,77 +106,100 @@ function tag () {
   printf "%s" "${out#*=}"
 }
 
-# Transcode from $src to $dst.
-# @param  $@  list of all files to transcode
+# Transcode a directory.
+# @param  $1  directory with .flac files to transcode
 function transcode () {
-  for f in "$@"; do
-    # Get file metadata
-    albumartist=$(tag ALBUMARTIST "$f")
-    artist=$(tag ARTIST "$f")
-    album=$(tag ALBUM "$f")
-    track=$(tag TRACKNUMBER "$f")
-    title=$(tag TITLE "$f")
-    year=$(tag ORIGINALYEAR "$f")
-    genre=$(tag GENRE "$f")
-    [[ -z "$albumartist" ]] && albumartist="$artist"
-    [[ -z "$year" ]] && year=$(tag DATE "$f")
+  # Get album art if it exists
+  local ti=$(find "$1" -type f | grep -iE "(cover|folder)\.(jpg|png|gif)$")
 
-    # Get album art
-    # TODO(ntruong): there's GOTTA be a better way to do this
-    local dir=$(echo "$f" | sed "s/\/[^/]*$//")
-    [[ -e "$dir/folder.gif" ]] && art="$dir/folder.gif"
-    [[ -e "$dir/folder.jpg" ]] && art="$dir/folder.jpg"
-    [[ -e "$dir/folder.png" ]] && art="$dir/folder.png"
-    [[ -e "$dir/cover.gif" ]] && art="$dir/cover.gif"
-    [[ -e "$dir/cover.jpg" ]] && art="$dir/cover.jpg"
-    [[ -e "$dir/cover.png" ]] && art="$dir/cover.png"
+  # Transcode all the files in the directory
+  for file in $(find "$1" -name "*.flac"); do
+    echo " [~] converting $file"
+
+    # Get tags as a shell variable to save time
+    for tag in $(metaflac --export-tags-to=- "$file"); do
+      local key="${tag%=*}"
+      local val="${tag#*=}"
+      case "$key" in
+        TITLE)
+          local tt="$val"
+          ;;
+        TRACKNUMBER)
+          local tn="$val"
+          ;;
+        ALBUM)
+          local tl="$val"
+          ;;
+        ARTIST)
+          local ta="$val"
+          ;;
+        ALBUMARTIST)
+          local tpe2="$val"
+          ;;
+        ORIGINALYEAR)
+          local ty="$val"
+          ;;
+        DATE)
+          local date="$val"
+          ;;
+      esac
+    done
+    [[ -z "$tpe2" ]] && local tpe2="$ta"
+    [[ -z "$ty" ]]   && local ty="$date"
 
     # Convert the file
-    local dir="$dst/$albumartist/$album ($year) [$enc]"
+    local dir="$dst/$tpe2/$tl ($ty) [$enc]"
     mkdir -p "$dir"
-    local dest=$(echo ${f##*/} | sed "s/flac$/mp3/")
-    echo " [~] converting $album - $title"
-    flac "${flac_flags[@]}" "$f" | lame ${lame_flags[@]} \
-      --ta "$artist" --tl "$album" \
-      --tn "$track"  --tt "$title" \
-      --ty "$year"   --tg "${genre:-12}" \
-      --tv "TPE2=$albumartist" \
-      --ti "$art" \
-      - "$dir/$dest" &> /dev/null
+    local mp3=$(echo ${file##*/} | sed "s/flac$/mp3/")
+    flac "${flac_flags[@]}" "$file" | lame ${lame_flags[@]} \
+      --tt "$tt" --tn "$tn" \
+      --tl "$tl" --ta "$ta" \
+      --ty "$ty" --ti "$ti" \
+      --tv "TPE2=$tpe2" \
+      - "$dir/$mp3" &> /dev/null &
   done
+
+  # Wait for all the files in the directory to transcode
+  # TODO(ntruong): error checking?
+  wait
+}
+
+# Generate spectrograms.
+# @param  $1  directory with .flac files to spectralize
+function spectrogram () {
+  for file in $(find "$1" -name "*.flac"); do
+    track=$(echo "$file" | sed "s/\.flac$//" | sed "s/.*\///")
+    sox "$file" -n spectrogram -t "$track" -o "$dst/$track.png" &
+  done
+
+  # Wait for all the spectrals
+  wait
 }
 
 # Make torrent files using the given announce.
 function maketorrent () {
-  for artist in `cd "$dst" && ls -d */`; do
-    for album in `cd "$dst/$artist" && ls -d */`; do
+  for artist in $(cd "$dst" && ls -d */); do
+    for album in $(cd "$dst/$artist" && ls -d */); do
       local torrent="${album%\/}.torrent"
       mktorrent -p -a "$announce" -o "$dst/$torrent" "$dst/$artist$album"
     done
   done
 }
 
-# Generate spectrograms.
-function spectrogram () {
-  for f in "$@"; do
-    track="${f%*.flac}"
-    track="${track##*/}"
-    sox "$f" -n spectrogram -t "$track" -o "$dst/$track.png"
-  done
-}
-
 function main () {
   # Make the destination directory if it doesn't already exist
   mkdir -p "$dst"
-  # Enumerate all files to examine.
-  files=( $(find "$src" -name "*.flac") )
   # Check if we only want to generate spectrograms.
   if [[ "$spectral" = true ]]; then
-    spectrogram "${files[@]}"
+    for f in "${files[@]}"; do
+      spectrogram "$f"
+    done
     exit 0
   fi
   # Transcode the files
-  transcode "${files[@]}"
+  for f in "${files[@]}"; do
+    transcode "$f"
+  done
   # Make torrent file in the root of destination directory
   [[ "$torrent" = true ]] && maketorrent
 }
